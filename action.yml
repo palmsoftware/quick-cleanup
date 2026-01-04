@@ -12,7 +12,7 @@ inputs:
   relocate-docker:
     description: 'Move Docker storage to /mnt partition (always, auto, never)'
     required: false
-    default: 'always'
+    default: 'auto'
   docker-storage-path:
     description: 'Custom path for Docker data-root'
     required: false

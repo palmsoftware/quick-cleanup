@@ -47,27 +47,39 @@ ROOT_AVAILABLE_KB=$(df / | tail -1 | awk '{print $4}')
 ROOT_AVAILABLE_GB=$((ROOT_AVAILABLE_KB / 1024 / 1024))
 echo "Root partition (/): ${ROOT_AVAILABLE_GB}GB available"
 
-# Check if target partition exists
-TARGET_PARTITION=$(df "$TARGET_PATH" 2>/dev/null | tail -1 | awk '{print $1}' || echo "")
-if [ -z "$TARGET_PARTITION" ]; then
-  # Try to get /mnt partition info
-  if df /mnt &> /dev/null; then
-    MNT_AVAILABLE_KB=$(df /mnt | tail -1 | awk '{print $4}')
-    MNT_AVAILABLE_GB=$((MNT_AVAILABLE_KB / 1024 / 1024))
-    echo "Mount partition (/mnt): ${MNT_AVAILABLE_GB}GB available"
-  else
-    echo "⚠️  WARNING: Target partition not found. Skipping relocation."
-    if [ "$MODE" = "always" ]; then
-      echo "❌ ERROR: mode=always but target partition unavailable"
-      exit 1
-    fi
-    exit 0
+# Check if /mnt is on a different partition than /
+ROOT_DEVICE=$(df / | tail -1 | awk '{print $1}')
+MNT_DEVICE=$(df /mnt 2>/dev/null | tail -1 | awk '{print $1}' || echo "$ROOT_DEVICE")
+
+echo "Root device: $ROOT_DEVICE"
+echo "Mount device: $MNT_DEVICE"
+
+if [ "$ROOT_DEVICE" = "$MNT_DEVICE" ]; then
+  echo "⚠️  /mnt is on the same partition as / - relocation would not free space"
+  if [ "$MODE" = "always" ]; then
+    echo "❌ ERROR: mode=always but /mnt is not a separate partition"
+    echo "   Suggestion: Use relocate-docker: auto or relocate-docker: never"
+    exit 1
   fi
-else
-  TARGET_AVAILABLE_KB=$(df "$TARGET_PATH" 2>/dev/null | tail -1 | awk '{print $4}' || echo "0")
-  TARGET_AVAILABLE_GB=$((TARGET_AVAILABLE_KB / 1024 / 1024))
-  echo "Target partition: ${TARGET_AVAILABLE_GB}GB available"
+  echo "Skipping Docker relocation (same partition)."
+  exit 0
 fi
+
+# Get /mnt partition info
+if df /mnt &> /dev/null; then
+  MNT_AVAILABLE_KB=$(df /mnt | tail -1 | awk '{print $4}')
+  MNT_AVAILABLE_GB=$((MNT_AVAILABLE_KB / 1024 / 1024))
+  echo "Mount partition (/mnt): ${MNT_AVAILABLE_GB}GB available"
+else
+  echo "⚠️  WARNING: /mnt partition not found. Skipping relocation."
+  if [ "$MODE" = "always" ]; then
+    echo "❌ ERROR: mode=always but /mnt partition unavailable"
+    exit 1
+  fi
+  exit 0
+fi
+
+TARGET_AVAILABLE_GB=$MNT_AVAILABLE_GB
 
 # Validate target partition has sufficient space
 if [ "${TARGET_AVAILABLE_GB:-0}" -lt 10 ]; then

@@ -42,8 +42,8 @@ quick-cleanup intelligently frees disk space and relocates Docker storage to the
 ```
 
 This will:
-1. Relocate Docker storage to /mnt partition (~11GB+ more space)
-2. Auto-detect disk space and clean accordingly
+1. Auto-detect disk space and clean accordingly
+2. Relocate Docker storage if /mnt is on a separate partition (older runners)
 3. Complete in 1-3 minutes
 
 ### Custom configuration
@@ -64,10 +64,10 @@ This will:
    - >20GB available: Light cleanup (cache, snap, Android, Docker)
    - ≤20GB available: Aggressive cleanup (+ removes dotnet, powershell, chromium, node_modules, ghc)
 
-2. **Relocate Docker storage**
-   - Moves Docker data-root from `/` (14GB) to `/mnt` (50GB+)
-   - Configures containerd to use new location
-   - Validates services after restart
+2. **Relocate Docker storage** (if beneficial)
+   - On older runners with separate /mnt partition: Moves Docker to /mnt for additional space
+   - On newer runners: Skips relocation (same partition, no benefit)
+   - Validates services after restart when relocation occurs
 
 3. **Validate and report**
    - Shows space freed
@@ -144,7 +144,7 @@ This will:
 | Input | Description | Default | Options |
 |-------|-------------|---------|---------|
 | `cleanup-mode` | Cleanup intensity | `auto` | `auto`, `light`, `aggressive`, `skip` |
-| `relocate-docker` | Docker relocation strategy | `always` | `always`, `auto`, `never` |
+| `relocate-docker` | Docker relocation strategy | `auto` | `always`, `auto`, `never` |
 | `docker-storage-path` | Custom Docker data-root | `/mnt/docker-storage` | Any absolute path |
 | `minimum-free-space` | Required free space (GB) | `0` | Number (0 = no validation) |
 | `cleanup-threshold` | Threshold for auto mode (GB) | `20` | Number |
@@ -221,16 +221,13 @@ Tested on ubuntu-22.04 runners:
 
 ## Troubleshooting
 
-### "Docker not relocated" error
+### "Docker not relocated" warning
 
-**Cause**: Target partition (/mnt) not available or has insufficient space
+**Cause**: /mnt is on the same partition as / (newer GitHub Actions runners)
 
-**Solution**:
-```yaml
-- uses: palmsoftware/quick-cleanup@v0
-  with:
-    relocate-docker: auto  # Only relocate if beneficial
-```
+**Expected behavior**: This is normal. Modern GitHub Actions runners don't have a separate /mnt partition, so Docker relocation is automatically skipped when using `relocate-docker: auto` (default).
+
+**Note**: If you explicitly set `relocate-docker: always`, the action will fail with an error. Use `auto` or `never` instead.
 
 ### "Insufficient disk space" error
 
