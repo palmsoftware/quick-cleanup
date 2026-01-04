@@ -1,0 +1,187 @@
+name: Test Quick Cleanup
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  lint:
+    name: Lint Shell Scripts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get update && sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck
+        run: make lint
+
+  test-auto-mode:
+    name: Test Auto Mode
+    needs: lint
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initial disk usage
+        run: df -h
+
+      - name: Test with defaults (auto mode)
+        uses: ./
+
+      - name: Validate Docker relocated
+        run: |
+          DOCKER_ROOT=$(docker info | grep "Docker Root Dir:" | awk '{print $4}')
+          echo "Docker Root Dir: $DOCKER_ROOT"
+          if [ "$DOCKER_ROOT" != "/mnt/docker-storage" ]; then
+            echo "ERROR: Docker not relocated to /mnt/docker-storage"
+            exit 1
+          fi
+          echo "✅ Docker successfully relocated"
+
+      - name: Test Docker functionality
+        run: |
+          docker pull hello-world
+          docker run --rm hello-world
+          echo "✅ Docker is functional after relocation"
+
+      - name: Check disk space freed
+        run: |
+          echo "Final disk usage:"
+          df -h
+          ROOT_AVAIL=$(df --output=avail -BG / | tail -1 | tr -d 'G ')
+          echo "Root partition available: ${ROOT_AVAIL}GB"
+          if [ "$ROOT_AVAIL" -lt 10 ]; then
+            echo "⚠️  WARNING: Less than 10GB free after cleanup"
+          else
+            echo "✅ Sufficient space available"
+          fi
+
+  test-light-mode:
+    name: Test Light Cleanup Mode
+    needs: lint
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initial disk usage
+        run: df -h
+
+      - name: Test light cleanup mode
+        uses: ./
+        with:
+          cleanup-mode: light
+          relocate-docker: auto
+
+      - name: Verify completion
+        run: |
+          echo "Final disk usage:"
+          df -h
+
+  test-aggressive-mode:
+    name: Test Aggressive Cleanup Mode
+    needs: lint
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initial disk usage
+        run: df -h
+
+      - name: Test aggressive cleanup
+        uses: ./
+        with:
+          cleanup-mode: aggressive
+          minimum-free-space: 15
+
+      - name: Verify minimum space met
+        run: |
+          ROOT_AVAIL=$(df --output=avail -BG / | tail -1 | tr -d 'G ')
+          echo "Root partition available: ${ROOT_AVAIL}GB"
+          if [ "$ROOT_AVAIL" -lt 15 ]; then
+            echo "ERROR: Minimum space requirement (15GB) not met"
+            exit 1
+          fi
+          echo "✅ Minimum space requirement met"
+
+  test-skip-cleanup:
+    name: Test Docker Relocation Only
+    needs: lint
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test Docker relocation only
+        uses: ./
+        with:
+          cleanup-mode: skip
+          relocate-docker: always
+
+      - name: Validate Docker relocated
+        run: |
+          DOCKER_ROOT=$(docker info | grep "Docker Root Dir:" | awk '{print $4}')
+          if [ "$DOCKER_ROOT" != "/mnt/docker-storage" ]; then
+            echo "ERROR: Docker not relocated"
+            exit 1
+          fi
+          echo "✅ Docker relocated successfully"
+
+  test-custom-configuration:
+    name: Test Custom Configuration
+    needs: lint
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Test with custom settings
+        uses: ./
+        with:
+          cleanup-mode: auto
+          cleanup-threshold: 15
+          remove-android: true
+          remove-large-packages: true
+          remove-docker-images: true
+          relocate-docker: always
+          minimum-free-space: 10
+
+      - name: Verify completion
+        run: |
+          ROOT_AVAIL=$(df --output=avail -BG / | tail -1 | tr -d 'G ')
+          echo "Root partition available: ${ROOT_AVAIL}GB"
+          echo "✅ Custom configuration test completed"
+
+  test-idempotency:
+    name: Test Idempotency
+    needs: lint
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: First run
+        uses: ./
+        with:
+          cleanup-mode: light
+
+      - name: Second run (should not fail)
+        uses: ./
+        with:
+          cleanup-mode: light
+
+      - name: Verify Docker still functional
+        run: |
+          docker pull alpine
+          docker run --rm alpine echo "✅ Idempotency test passed"

@@ -1,0 +1,91 @@
+name: 'Quick Cleanup'
+description: 'Intelligent disk space optimization for GitHub Actions runners with automatic Docker relocation'
+branding:
+  icon: 'trash-2'
+  color: 'green'
+
+inputs:
+  cleanup-mode:
+    description: 'Cleanup intensity (auto, light, aggressive, skip)'
+    required: false
+    default: 'auto'
+  relocate-docker:
+    description: 'Move Docker storage to /mnt partition (always, auto, never)'
+    required: false
+    default: 'always'
+  docker-storage-path:
+    description: 'Custom path for Docker data-root'
+    required: false
+    default: '/mnt/docker-storage'
+  minimum-free-space:
+    description: 'Minimum free space required in GB (0 = no validation)'
+    required: false
+    default: '0'
+  cleanup-threshold:
+    description: 'Space threshold in GB for auto mode (light if above, aggressive if below)'
+    required: false
+    default: '20'
+  remove-android:
+    description: 'Remove Android SDK'
+    required: false
+    default: 'true'
+  remove-large-packages:
+    description: 'Remove MySQL, PostgreSQL, Firefox, dotnet, etc.'
+    required: false
+    default: 'true'
+  remove-docker-images:
+    description: 'Run docker system prune'
+    required: false
+    default: 'true'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Validate environment
+      shell: bash
+      run: ${{ github.action_path }}/scripts/validate-environment.sh
+
+    - name: Initial disk report
+      shell: bash
+      run: |
+        echo "=== Initial disk usage ==="
+        df -h
+        echo ""
+        echo "=== System info ==="
+        echo "OS: $(lsb_release -d | cut -f2)"
+        echo "Memory: $(free -h | grep '^Mem:' | awk '{print $2}' | tr -d '\n') total"
+        echo "CPU cores: $(nproc)"
+
+    - name: Relocate Docker storage
+      if: ${{ inputs.relocate-docker != 'never' }}
+      shell: bash
+      run: |
+        ${{ github.action_path }}/scripts/relocate-docker.sh \
+          "${{ inputs.relocate-docker }}" \
+          "${{ inputs.docker-storage-path }}"
+
+    - name: Cleanup disk space
+      if: ${{ inputs.cleanup-mode != 'skip' }}
+      shell: bash
+      run: |
+        ${{ github.action_path }}/scripts/cleanup-disk.sh \
+          "${{ inputs.cleanup-mode }}" \
+          "${{ inputs.cleanup-threshold }}" \
+          "${{ inputs.minimum-free-space }}" \
+          "${{ inputs.remove-android }}" \
+          "${{ inputs.remove-large-packages }}" \
+          "${{ inputs.remove-docker-images }}"
+
+    - name: Final disk report
+      shell: bash
+      run: |
+        echo ""
+        echo "=== Final disk usage ==="
+        df -h
+        echo ""
+        echo "=== Docker storage location ==="
+        if command -v docker &> /dev/null; then
+          docker info 2>/dev/null | grep "Docker Root Dir:" || echo "Could not determine Docker root dir"
+        else
+          echo "Docker not available"
+        fi
