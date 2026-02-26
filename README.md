@@ -2,7 +2,7 @@
 
 [![Test Quick Cleanup](https://github.com/palmsoftware/quick-cleanup/actions/workflows/pre-main.yml/badge.svg)](https://github.com/palmsoftware/quick-cleanup/actions/workflows/pre-main.yml)
 
-Intelligent disk space optimization for GitHub Actions runners with automatic Docker relocation.
+Intelligent disk space optimization for GitHub Actions runners with automatic Docker relocation. Supports both Ubuntu and macOS runners.
 
 ## Why quick-cleanup?
 
@@ -76,6 +76,8 @@ This will:
 
 ### What Gets Cleaned
 
+#### Linux (Ubuntu)
+
 **Light mode**:
 - Package cache (apt-get clean, autoremove)
 - Snap packages (disabled revisions)
@@ -90,6 +92,23 @@ This will:
 - /usr/local/lib/node_modules (~1GB)
 - /opt/ghc, /usr/local/.ghcup (~2GB)
 - Large packages: MySQL, PostgreSQL, Firefox, Azure CLI, Google Cloud SDK
+
+#### macOS
+
+**Light mode**:
+- Homebrew cache cleanup
+- Android SDK (if present)
+- Docker image prune (if Docker is available)
+- Temporary files and log files
+
+**Aggressive mode** (everything above plus):
+- Xcode simulator runtimes (~5-15GB)
+- /usr/local/share/dotnet (.NET SDK)
+- /usr/local/share/powershell
+- /usr/local/share/chromium
+- /usr/local/lib/node_modules
+- /opt/ghc, /usr/local/.ghcup (Haskell)
+- System/library caches (~/Library/Caches, /Library/Caches)
 
 ## Use Cases
 
@@ -137,6 +156,17 @@ This will:
   uses: palmsoftware/quick-ocp@v0
 ```
 
+### macOS runner cleanup
+
+```yaml
+- name: Free space on macOS runner
+  uses: palmsoftware/quick-cleanup@v0
+  with:
+    cleanup-mode: aggressive
+    remove-xcode-simulators: 'true'
+    remove-homebrew-cache: 'true'
+```
+
 ## Configuration Reference
 
 ### Inputs
@@ -149,8 +179,10 @@ This will:
 | `minimum-free-space` | Required free space (GB) | `0` | Number (0 = no validation) |
 | `cleanup-threshold` | Threshold for auto mode (GB) | `20` | Number |
 | `remove-android` | Remove Android SDK | `true` | `true`, `false` |
-| `remove-large-packages` | Remove databases, browsers, CLIs | `true` | `true`, `false` |
+| `remove-large-packages` | Remove databases, browsers, CLIs (Linux only) | `true` | `true`, `false` |
 | `remove-docker-images` | Prune Docker images | `true` | `true`, `false` |
+| `remove-xcode-simulators` | Remove Xcode simulator runtimes (macOS only) | `true` | `true`, `false` |
+| `remove-homebrew-cache` | Clean Homebrew cache (macOS only) | `true` | `true`, `false` |
 
 ### Examples
 
@@ -201,13 +233,14 @@ Tested on ubuntu-22.04 runners:
 - ✅ Ubuntu 22.04 (fully tested)
 - ✅ Ubuntu 24.04 (fully tested)
 - ⚠️ Other Linux: May work, not tested
-- ❌ macOS: Not supported (different disk layout)
+- ⚠️ macOS 15 (experimental — cleanup only, no Docker relocation)
 - ❌ Windows: Not supported
 
 ## Limitations
 
-- **Ubuntu-only**: Relies on apt, systemd, standard GitHub Actions runner layout
-- **Root partition focus**: Optimized for standard runner disk layout (/, /mnt)
+- **Linux cleanup**: Relies on apt, systemd, standard GitHub Actions runner layout
+- **macOS cleanup**: Experimental; no Docker relocation (macOS runners don't use /mnt partitions)
+- **Root partition focus**: Optimized for standard runner disk layout (/, /mnt on Linux)
 - **No undo**: Cleanup is permanent, cannot restore removed packages
 - **Sudo required**: All operations require sudo access
 
