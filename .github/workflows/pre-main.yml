@@ -179,3 +179,36 @@ jobs:
         run: |
           docker pull alpine
           docker run --rm alpine echo "✅ Idempotency test passed"
+
+  test-macos:
+    name: Test macOS Cleanup
+    needs: lint
+    runs-on: macos-15
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Initial disk usage
+        run: |
+          df -h
+          echo ""
+          echo "=== Xcode simulator runtimes ==="
+          xcrun simctl runtime list 2>/dev/null || echo "No simulator runtimes found"
+
+      - name: Test aggressive cleanup
+        uses: ./
+        with:
+          cleanup-mode: aggressive
+          remove-xcode-simulators: 'true'
+          remove-homebrew-cache: 'true'
+
+      - name: Verify cleanup
+        run: |
+          echo "=== Final disk usage ==="
+          df -h
+          echo ""
+          echo "=== Remaining simulator runtimes ==="
+          xcrun simctl runtime list 2>/dev/null || echo "No simulator runtimes found"
+          echo ""
+          echo "✅ macOS cleanup test completed"

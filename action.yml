@@ -10,7 +10,7 @@ inputs:
     required: false
     default: 'auto'
   relocate-docker:
-    description: 'Move Docker storage to /mnt partition (always, auto, never)'
+    description: 'Move Docker storage to /mnt partition (always, auto, never) - Linux only'
     required: false
     default: 'auto'
   docker-storage-path:
@@ -30,20 +30,34 @@ inputs:
     required: false
     default: 'true'
   remove-large-packages:
-    description: 'Remove MySQL, PostgreSQL, Firefox, dotnet, etc.'
+    description: 'Remove MySQL, PostgreSQL, Firefox, dotnet, etc. (Linux only)'
     required: false
     default: 'true'
   remove-docker-images:
     description: 'Run docker system prune'
     required: false
     default: 'true'
+  remove-xcode-simulators:
+    description: 'Remove Xcode simulator runtimes (macOS only)'
+    required: false
+    default: 'true'
+  remove-homebrew-cache:
+    description: 'Clean Homebrew cache (macOS only)'
+    required: false
+    default: 'true'
 
 runs:
   using: 'composite'
   steps:
-    - name: Validate environment
+    - name: Validate environment (Linux)
+      if: runner.os == 'Linux'
       shell: bash
       run: ${{ github.action_path }}/scripts/validate-environment.sh
+
+    - name: Validate environment (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: ${{ github.action_path }}/scripts/validate-environment-macos.sh
 
     - name: Initial disk report
       shell: bash
@@ -52,20 +66,26 @@ runs:
         df -h
         echo ""
         echo "=== System info ==="
-        echo "OS: $(lsb_release -d | cut -f2)"
-        echo "Memory: $(free -h | grep '^Mem:' | awk '{print $2}' | tr -d '\n') total"
-        echo "CPU cores: $(nproc)"
+        if [ "$(uname -s)" = "Darwin" ]; then
+          echo "OS: macOS $(sw_vers -productVersion)"
+          echo "Memory: $(( $(sysctl -n hw.memsize) / 1024 / 1024 / 1024 ))GB total"
+          echo "CPU cores: $(sysctl -n hw.ncpu)"
+        else
+          echo "OS: $(lsb_release -d | cut -f2)"
+          echo "Memory: $(free -h | grep '^Mem:' | awk '{print $2}' | tr -d '\n') total"
+          echo "CPU cores: $(nproc)"
+        fi
 
     - name: Relocate Docker storage
-      if: ${{ inputs.relocate-docker != 'never' }}
+      if: inputs.relocate-docker != 'never' && runner.os == 'Linux'
       shell: bash
       run: |
         ${{ github.action_path }}/scripts/relocate-docker.sh \
           "${{ inputs.relocate-docker }}" \
           "${{ inputs.docker-storage-path }}"
 
-    - name: Cleanup disk space
-      if: ${{ inputs.cleanup-mode != 'skip' }}
+    - name: Cleanup disk space (Linux)
+      if: inputs.cleanup-mode != 'skip' && runner.os == 'Linux'
       shell: bash
       run: |
         ${{ github.action_path }}/scripts/cleanup-disk.sh \
@@ -75,6 +95,19 @@ runs:
           "${{ inputs.remove-android }}" \
           "${{ inputs.remove-large-packages }}" \
           "${{ inputs.remove-docker-images }}"
+
+    - name: Cleanup disk space (macOS)
+      if: inputs.cleanup-mode != 'skip' && runner.os == 'macOS'
+      shell: bash
+      run: |
+        ${{ github.action_path }}/scripts/cleanup-disk-macos.sh \
+          "${{ inputs.cleanup-mode }}" \
+          "${{ inputs.cleanup-threshold }}" \
+          "${{ inputs.minimum-free-space }}" \
+          "${{ inputs.remove-android }}" \
+          "${{ inputs.remove-docker-images }}" \
+          "${{ inputs.remove-xcode-simulators }}" \
+          "${{ inputs.remove-homebrew-cache }}"
 
     - name: Final disk report
       shell: bash
