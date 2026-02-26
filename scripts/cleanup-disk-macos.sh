@@ -138,26 +138,43 @@ sudo rm -rf /var/tmp/* 2>/dev/null || true
 echo "=== Cleaning log files ==="
 sudo rm -rf /var/log/*.log 2>/dev/null || true
 
+# Function to clean up Xcode simulator runtimes
+cleanup_xcode_simulators() {
+  echo "=== Removing Xcode simulator runtimes ==="
+  if command -v xcrun >/dev/null 2>&1; then
+    echo "Shutting down all simulators..."
+    xcrun simctl shutdown all 2>&1 || true
+    echo "Deleting all simulator devices..."
+    xcrun simctl delete all 2>&1 || echo "⚠️  Could not delete all simulator devices"
+    echo "Deleting all simulator runtimes..."
+    xcrun simctl runtime delete all 2>&1 || echo "⚠️  Could not delete all simulator runtimes"
+  fi
+
+  # Unmount any simulator disk images still mounted under CoreSimulator/Volumes
+  if [ -d "/Library/Developer/CoreSimulator/Volumes" ]; then
+    echo "Unmounting simulator disk images..."
+    mount | grep "/Library/Developer/CoreSimulator/Volumes" | awk '{print $3}' | while read -r mountpoint; do
+      echo "  Detaching: $mountpoint"
+      sudo hdiutil detach "$mountpoint" -force 2>&1 || true
+    done
+  fi
+
+  # Now safe to remove the directories
+  SIMULATOR_DIRS="/Library/Developer/CoreSimulator/Volumes /Library/Developer/CoreSimulator/Profiles/Runtimes"
+  for dir in $SIMULATOR_DIRS; do
+    if [ -d "$dir" ]; then
+      echo "🗂️  Removing: $dir"
+      sudo rm -rf "$dir" 2>&1 || echo "⚠️  Could not fully remove $dir"
+    fi
+  done
+  echo "✅ Xcode simulator cleanup complete"
+}
+
 # Aggressive cleanup: remove large directories and Xcode simulators
 if [ "$LIGHT_CLEANUP" -eq 0 ]; then
   # Xcode simulator cleanup
   if [ "$REMOVE_XCODE_SIMULATORS" = "true" ]; then
-    echo "=== Removing Xcode simulator runtimes ==="
-    if command -v xcrun >/dev/null 2>&1; then
-      echo "Deleting all simulator devices..."
-      xcrun simctl delete all 2>&1 || echo "⚠️  Could not delete all simulator devices"
-      echo "Deleting all simulator runtimes..."
-      xcrun simctl runtime delete all 2>&1 || echo "⚠️  Could not delete all simulator runtimes"
-    fi
-    # Remove simulator runtime files directly
-    SIMULATOR_DIRS="/Library/Developer/CoreSimulator/Volumes /Library/Developer/CoreSimulator/Profiles/Runtimes"
-    for dir in $SIMULATOR_DIRS; do
-      if [ -d "$dir" ]; then
-        echo "🗂️  Removing: $dir"
-        sudo rm -rf "$dir" 2>&1 || echo "⚠️  Could not fully remove $dir"
-      fi
-    done
-    echo "✅ Xcode simulator cleanup complete"
+    cleanup_xcode_simulators
   else
     echo "=== Skipping Xcode simulator removal (disabled) ==="
   fi
@@ -184,21 +201,7 @@ else
   echo "=== Skipping large directory cleanup (light mode) ==="
   # Still clean Xcode simulators in light mode if explicitly requested
   if [ "$REMOVE_XCODE_SIMULATORS" = "true" ]; then
-    echo "=== Removing Xcode simulator runtimes (explicitly enabled) ==="
-    if command -v xcrun >/dev/null 2>&1; then
-      echo "Deleting all simulator devices..."
-      xcrun simctl delete all 2>&1 || echo "⚠️  Could not delete all simulator devices"
-      echo "Deleting all simulator runtimes..."
-      xcrun simctl runtime delete all 2>&1 || echo "⚠️  Could not delete all simulator runtimes"
-    fi
-    SIMULATOR_DIRS="/Library/Developer/CoreSimulator/Volumes /Library/Developer/CoreSimulator/Profiles/Runtimes"
-    for dir in $SIMULATOR_DIRS; do
-      if [ -d "$dir" ]; then
-        echo "🗂️  Removing: $dir"
-        sudo rm -rf "$dir" 2>&1 || echo "⚠️  Could not fully remove $dir"
-      fi
-    done
-    echo "✅ Xcode simulator cleanup complete"
+    cleanup_xcode_simulators
   fi
 fi
 
