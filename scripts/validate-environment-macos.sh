@@ -18,22 +18,13 @@ echo "✅ OS: macOS $OS_VERSION"
 # Check required tools
 echo ""
 echo "Checking required tools..."
-MISSING_TOOLS=()
-
-if ! command -v jq &> /dev/null; then
-  MISSING_TOOLS+=("jq")
-fi
 
 if ! command -v sudo &> /dev/null; then
-  MISSING_TOOLS+=("sudo")
-fi
-
-if [ ${#MISSING_TOOLS[@]} -gt 0 ]; then
-  echo "❌ ERROR: Missing required tools: ${MISSING_TOOLS[*]}"
-  echo "   Please install the missing tools before running quick-cleanup."
+  echo "❌ ERROR: Missing required tool: sudo"
+  echo "   Please install sudo before running quick-cleanup."
   exit 1
 fi
-echo "✅ Required tools found (jq, sudo)"
+echo "✅ Required tools found (sudo)"
 
 # Check optional tools
 echo ""
